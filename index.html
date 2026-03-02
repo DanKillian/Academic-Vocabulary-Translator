@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Vocab Translator</title>
+    <style>
+        /* Base styles */
+        body {
+            margin: 0;
+            height: 100vh;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+            text-align: center;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Menu Screen */
+        #menuScreen {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .menu-title {
+            font-size: 3vw;
+            color: #888888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+        }
+
+        .lang-button {
+            background: none;
+            border: 2px solid #555555;
+            color: #ffffff;
+            font-size: 5vw;
+            padding: 20px 60px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .lang-button:active, .lang-button:hover {
+            background-color: #333333;
+            border-color: #ffffff;
+        }
+
+        /* Translation Screen */
+        #translationScreen {
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            position: relative; /* Allows absolute positioning inside this container */
+        }
+
+        /* Subtle Back Button */
+        #backButton {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            background: none;
+            border: none;
+            color: #555555;
+            font-size: 1.5vw;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            padding: 10px;
+            z-index: 10; /* Ensures it stays clickable above other elements */
+        }
+
+        #backButton:active, #backButton:hover {
+            color: #ffffff;
+        }
+
+        #displayText {
+            font-size: 10vw;
+            font-weight: 700;
+            padding: 20px;
+            transition: color 0.3s ease;
+        }
+
+        .hint {
+            font-size: 1.5vw;
+            color: #555555;
+            position: absolute;
+            bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Responsive fallback for iPad portrait mode */
+        @media (orientation: portrait) {
+            .menu-title { font-size: 5vw; }
+            .lang-button { font-size: 8vw; }
+            #displayText { font-size: 15vw; }
+            .hint, #backButton { font-size: 3vw; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="menuScreen">
+        <div class="menu-title">Select Target Language</div>
+        <button class="lang-button" onclick="startApp('ko', 'Korean')">Korean</button>
+        <button class="lang-button" onclick="startApp('zh', 'Chinese')">Chinese</button>
+    </div>
+
+    <div id="translationScreen">
+        <button id="backButton" onclick="goBack(event)">← Back</button>
+        <div id="displayText">Tap to speak</div>
+        <div class="hint" id="hintText">English → ...</div>
+    </div>
+
+    <script>
+        let targetLanguageCode = ''; 
+        const displayEl = document.getElementById('displayText');
+        const menuScreenEl = document.getElementById('menuScreen');
+        const translationScreenEl = document.getElementById('translationScreen');
+
+        // Function to switch from the Menu to the Translator
+        function startApp(langCode, langName) {
+            targetLanguageCode = langCode;
+            document.getElementById('hintText').innerText = `English → ${langName}`;
+            menuScreenEl.style.display = 'none';
+            translationScreenEl.style.display = 'flex';
+        }
+
+        // Function to switch back to the Menu
+        function goBack(event) {
+            // This stops the click from "bubbling up" and accidentally triggering the microphone
+            event.stopPropagation(); 
+            
+            // Reset the screen visuals
+            displayEl.innerText = "Tap to speak";
+            displayEl.style.color = "#ffffff";
+            
+            // Switch screens
+            translationScreenEl.style.display = 'none';
+            menuScreenEl.style.display = 'flex';
+        }
+
+        // The "Ears": Setting up Web Speech API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            displayEl.innerText = "Browser not supported. Use Chrome/Safari.";
+        } else {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false; 
+
+            // Listen for taps on the translation screen
+            translationScreenEl.addEventListener('click', () => {
+                displayEl.innerText = "Listening...";
+                displayEl.style.color = "#666666";
+                try {
+                    recognition.start();
+                } catch(e) {
+                    // Prevents errors if double-tapped
+                }
+            });
+
+            // When a word is successfully heard
+            recognition.addEventListener('result', async (event) => {
+                const englishWord = event.results[0][0].transcript;
+                
+                displayEl.style.color = "#ffffff";
+                displayEl.innerText = englishWord;
+
+                // The "Brain": Fetching the translation
+                try {
+                    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(englishWord)}&langpair=en|${targetLanguageCode}`);
+                    const data = await response.json();
+                    const translatedWord = data.responseData.translatedText;
+
+                    // Wait 2.5 seconds, then switch to the translated word
+                    setTimeout(() => {
+                        displayEl.style.color = "#4DA8DA";
+                        displayEl.innerText = translatedWord;
+                    }, 2500);
+
+                } catch (error) {
+                    setTimeout(() => {
+                        displayEl.style.color = "#ff6b6b";
+                        displayEl.innerText = "Translation failed";
+                    }, 2500);
+                }
+            });
+
+            recognition.addEventListener('error', (event) => {
+                displayEl.style.color = "#ff6b6b";
+                if (event.error === 'not-allowed') {
+                    displayEl.innerText = "Allow mic access";
+                } else {
+                    displayEl.innerText = "Try again";
+                }
+            });
+        }
+    </script>
+
+</body>
+</html>
